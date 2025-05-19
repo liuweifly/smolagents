@@ -113,7 +113,7 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
+# .env
 .venv
 env/
 venv/
@@ -153,3 +153,6 @@ tool_output/
 
 # Gradio runtime
 .gradio/
+
+examples/chroma_db
+examples/chroma_db_bazi
