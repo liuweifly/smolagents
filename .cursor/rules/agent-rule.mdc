@@ -1,0 +1,242 @@
+---
+description: 如果需要创建agent的时候，可以引用此规则活动更多创建agent的指引
+globs: 
+alwaysApply: false
+---
+# SmolaAgent模板
+
+这个规则帮助你创建基于smolagents框架的代理系统，包括工具定义和代理初始化。
+
+## 基础代理
+
+```
+import os
+from dotenv import load_dotenv
+from smolagents import CodeAgent, InferenceClientModel, tool
+
+# 加载环境变量
+load_dotenv()
+
+# 定义一个简单工具
+@tool
+def get_current_time() -> str:
+    """
+    获取当前系统时间。
+    
+    Returns:
+        str: 当前日期和时间的字符串表示
+    """
+    from datetime import datetime
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return f"当前时间是: {current_time}"
+
+# 初始化模型
+model = InferenceClientModel()
+# 也可以指定模型 ID
+# model = InferenceClientModel(model_id="Qwen/Qwen2.5-72B-Instruct")
+
+# 创建代理
+agent = CodeAgent(
+    tools=[get_current_time],
+    model=model,
+    stream_outputs=True,
+    add_base_tools=True,  # 添加基础工具
+)
+
+# 运行代理
+result = agent.run("请告诉我现在的时间")
+print(f"执行结果: {result}")
+```
+
+## 带自定义工具的代理
+
+```
+import os
+import requests
+from dotenv import load_dotenv
+from smolagents import CodeAgent, InferenceClientModel, tool
+
+# 加载环境变量
+load_dotenv()
+
+# 定义多个工具
+@tool
+def get_weather(location: str) -> str:
+    """
+    获取指定位置的天气信息。
+    
+    Args:
+        location: 城市名称，如"北京"、"上海"
+        
+    Returns:
+        str: 天气信息的字符串描述
+    """
+    # 这里应该使用实际的天气API，这里仅作示例
+    weather_info = {
+        "北京": "晴朗，温度25°C",
+        "上海": "多云，温度28°C",
+        "广州": "小雨，温度30°C",
+    }
+    return f"{location}的天气: {weather_info.get(location, '暂无该城市天气信息')}"
+
+@tool
+def search_web(query: str) -> str:
+    """
+    在网络上搜索信息。
+    
+    Args:
+        query: 搜索查询词
+        
+    Returns:
+        str: 搜索结果摘要
+    """
+    # 简化示例，实际应使用搜索API
+    return f"关于'{query}'的搜索结果: 这是一个示例搜索结果"
+
+# 通过继承Tool类创建更复杂的工具
+from smolagents import Tool
+
+class TranslationTool(Tool):
+    name = "translate_text"
+    description = "将文本从一种语言翻译到另一种语言"
+    inputs = {
+        "text": {
+            "type": "string", 
+            "description": "要翻译的文本"
+        },
+        "target_language": {
+            "type": "string",
+            "description": "目标语言，如'英语'、'法语'等"
+        }
+    }
+    output_type = "string"
+
+    def forward(self, text: str, target_language: str) -> str:
+        # 简化示例，实际应调用翻译API
+        translations = {
+            "英语": f"[英文翻译] {text}",
+            "法语": f"[法文翻译] {text}",
+            "德语": f"[德文翻译] {text}",
+        }
+        return translations.get(target_language, f"不支持翻译到{target_language}")
+
+# 初始化模型和工具实例
+model = InferenceClientModel()
+translation_tool = TranslationTool()
+
+# 创建代理
+agent = CodeAgent(
+    tools=[get_weather, search_web, translation_tool],
+    model=model,
+    stream_outputs=True,
+)
+
+# 运行代理
+result = agent.run("北京今天天气怎么样？然后把这个信息翻译成英语。")
+print(f"执行结果: {result}")
+```
+
+## 带多参数和规划的高级代理
+
+```
+import os
+from dotenv import load_dotenv
+from smolagents import CodeAgent, InferenceClientModel, tool
+
+# 加载环境变量
+load_dotenv()
+
+# 定义高级工具
+@tool
+def analyze_image(image_url: str, analysis_type: str = "general") -> str:
+    """
+    分析图像并返回结果。
+    
+    Args:
+        image_url: 图像的URL
+        analysis_type: 分析类型，可选"general"(一般描述)、"objects"(物体检测)或"text"(文字识别)
+        
+    Returns:
+        str: 图像分析结果
+    """
+    # 实际应用中应该调用计算机视觉API
+    analysis_results = {
+        "general": f"这张图片看起来是一张{['风景', '人物', '动物', '建筑'][hash(image_url) % 4]}照片",
+        "objects": f"检测到以下物体: 人(0.95), 桌子(0.87), 椅子(0.76)",
+        "text": f"图像中包含文字: 'Sample Text 123'"
+    }
+    return analysis_results.get(analysis_type, "不支持的分析类型")
+
+# 初始化模型
+model = InferenceClientModel(model_id="Qwen/Qwen2.5-72B-Instruct")
+
+# 创建带规划功能的代理
+agent = CodeAgent(
+    tools=[analyze_image],
+    model=model,
+    stream_outputs=True,
+    planning_interval=3  # 每3步执行一次规划
+)
+
+# 运行代理，使用additional_args传递额外参数
+result = agent.run(
+    "描述这张图片中的内容并识别出其中的文字",
+    additional_args={
+        "image_url": "https://example.com/sample_image.jpg"
+    }
+)
+print(f"执行结果: {result}")
+```
+
+## 使用多个LLM模型的组合代理系统
+
+```
+import os
+from dotenv import load_dotenv
+from smolagents import CodeAgent, InferenceClientModel, ToolCallingAgent, tool
+
+# 加载环境变量
+load_dotenv()
+
+# 定义工具
+@tool
+def summarize_text(text: str, max_words: int = 100) -> str:
+    """
+    对文本进行摘要。
+    
+    Args:
+        text: 要摘要的文本
+        max_words: 摘要最大词数
+        
+    Returns:
+        str: 文本摘要
+    """
+    # 实际应用中应使用文本摘要模型或API
+    words = text.split()
+    if len(words) <= max_words:
+        return text
+    return " ".join(words[:max_words]) + "..."
+
+# 初始化不同的模型
+primary_model = InferenceClientModel(model_id="Qwen/Qwen2.5-72B-Instruct")
+secondary_model = InferenceClientModel(model_id="meta-llama/Llama-3-8B-Instruct")
+
+# 创建主代理
+main_agent = CodeAgent(
+    tools=[summarize_text],
+    model=primary_model,
+    stream_outputs=True,
+)
+
+# 创建辅助代理
+helper_agent = ToolCallingAgent(
+    tools=[summarize_text],
+    model=secondary_model,
+)
+
+# 运行代理系统
+main_result = main_agent.run("请总结以下文本，限制在50个词以内：'这是一段需要总结的长文本...'")
+helper_result = helper_agent.run("请分析主代理的输出并提供改进建议")
+
+print(f"主代理结果: {main_result}")
+print(f"辅助代理结果: {helper_result}")

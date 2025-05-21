@@ -1,11 +1,17 @@
+import os
+from dotenv import load_dotenv
+
 from smolagents import InferenceClientModel, LiteLLMModel, OpenAIServerModel, TransformersModel, tool
 from smolagents.agents import CodeAgent, ToolCallingAgent
 
+import litellm # Import litellm to use its functions
+# litellm._turn_on_debug() # Enable LiteLLM debug mode
 
+load_dotenv()
 # Choose which inference type to use!
 
-available_inferences = ["hf_api", "hf_api_provider", "transformers", "ollama", "litellm", "openai"]
-chosen_inference = "hf_api_provider"
+available_inferences = ["hf_api", "hf_api_provider", "transformers", "ollama", "litellm", "openai", "qwen"]
+chosen_inference = "qwen"
 
 print(f"Chose model: '{chosen_inference}'")
 
@@ -24,6 +30,15 @@ elif chosen_inference == "ollama":
         api_base="http://localhost:11434",  # replace with remote open-ai compatible server if necessary
         api_key="your-api-key",  # replace with API key if necessary
         num_ctx=8192,  # ollama default is 2048 which will often fail horribly. 8192 works for easy tasks, more is better. Check https://huggingface.co/spaces/NyxKrage/LLM-Model-VRAM-Calculator to calculate how much VRAM this will need for the selected model.
+    )
+
+elif chosen_inference == "qwen":
+    model = LiteLLMModel(
+        model_id="openai/qwen3-235b-a22b",  # Using qwen-plus as a more stable option
+        api_base=os.getenv("ALI_BASE_URL"),
+        api_key=os.getenv("ALI_API_KEY"),
+        provider="openai",
+        enable_thinking=False,
     )
 
 elif chosen_inference == "litellm":
@@ -50,8 +65,8 @@ def get_weather(location: str, celsius: bool | None = False) -> str:
 
 agent = ToolCallingAgent(tools=[get_weather], model=model, verbosity_level=2)
 
-print("ToolCallingAgent:", agent.run("What's the weather like in Paris?"))
+# print("ToolCallingAgent:", agent.run("What's the weather like in Paris?"))
 
-agent = CodeAgent(tools=[get_weather], model=model, verbosity_level=2, stream_outputs=True)
+agent = CodeAgent(tools=[get_weather], model=model, verbosity_level=2)
 
 print("CodeAgent:", agent.run("What's the weather like in Paris?"))

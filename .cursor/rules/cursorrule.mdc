@@ -1,0 +1,168 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Principles for Building High-Quality Agent Systems
+
+This rule summarizes the key principles for building high-quality agent systems based on the smolagents framework. Following these principles will help you create more reliable and efficient agent systems.
+
+## 1. Simplify the Workflow
+
+The best agent systems are the simplest ones. Giving LLMs autonomy in your workflow introduces the risk of errors.
+
+```python
+# Not recommended: Let the agent make multiple separate calls
+@tool
+def get_travel_distance(origin: str, destination: str) -> str:
+    # Calculate distance...
+    return f"The distance from {origin} to {destination} is {distance} kilometers"
+
+@tool
+def get_weather(location: str) -> str:
+    # Get weather...
+    return f"The weather in {location} is {weather}"
+
+# Recommended: Integrate related functionalities into one tool
+@tool
+def get_spot_information(surf_spot: str) -> str:
+    """
+    Get comprehensive information about a surf spot, including distance and weather.
+    
+    Args:
+        surf_spot: Name of the surf spot
+    """
+    distance = calculate_distance(user_location, surf_spot)
+    weather = get_weather_data(surf_spot)
+    return f"{surf_spot} is {distance} kilometers away and the current weather is {weather}"
+```
+
+### Key Principles
+
+- **Reduce the number of LLM calls**: Each LLM call carries a risk of errors, so minimize them
+- **Integrate multiple tools**: Combine related functionalities into one tool
+- **Use deterministic functions**: Prefer deterministic functions over relying on LLM judgment
+
+## 2. Improve Information Flow to the LLM Engine
+
+The LLM is like an intelligent robot trapped in a room, with the only form of communication being notes passed under the door. It only knows what you explicitly tell it.
+
+```python
+# Poor example
+@tool
+def get_weather_api(location: str, date_time: str) -> str:
+    """
+    Returns the weather report.
+    
+    Args:
+        location: The place you want the weather for.
+        date_time: The date and time you want.
+    """
+    lon, lat = convert_location_to_coordinates(location)
+    date_time = datetime.strptime(date_time)
+    return str(get_weather_report_at_coordinates((lon, lat), date_time))
+
+# Improved example
+@tool
+def get_weather_api(location: str, date_time: str) -> str:
+    """
+    Returns the weather report.
+    
+    Args:
+        location: The name of the place you want the weather for. Should be a place name, possibly followed by city and country, e.g., "West Lake, Hangzhou, China".
+        date_time: The date and time for which you want the report, formatted as '%Y-%m-%d %H:%M:%S', e.g., '2024-07-01 14:30:00'.
+    """
+    try:
+        lon, lat = convert_location_to_coordinates(location)
+        print(f"Converted location '{location}' to coordinates: [{lon}, {lat}]")
+    except Exception as e:
+        raise ValueError(f"Unable to convert '{location}' to coordinates. Please provide a valid location name. Error: {str(e)}")
+    
+    try:
+        dt_obj = datetime.strptime(date_time, '%Y-%m-%d %H:%M:%S')
+        print(f"Successfully parsed date time '{date_time}'")
+    except Exception as e:
+        raise ValueError(f"Date time format error. Please use the format '%Y-%m-%d %H:%M:%S', e.g., '2024-07-01 14:30:00'. Error: {str(e)}")
+    
+    weather_data = get_weather_report_at_coordinates((lon, lat), dt_obj)
+    return f"Weather report for {location} at {date_time}: Temperature will be {weather_data[0]}°C, with {weather_data[1]*100:.0f}% chance of rain and wind speed of {weather_data[2]}m/s"
+```
+
+### Key Principles
+
+- **Provide clear task instructions**: Minor changes in task descriptions can lead to completely different results
+- **Detailed parameter descriptions**: Clearly explain the format and requirements for each parameter
+- **Thorough error handling**: Provide useful error messages and handling mechanisms
+- **Detailed logging**: Use print statements to record useful information
+
+## 3. Provide Additional Parameters
+
+Use `additional_args` to pass extra information to your agent.
+
+```python
+from smolagents import CodeAgent, InferenceClientModel
+
+model = InferenceClientModel(model_id="Qwen/Qwen2.5-72B-Instruct")
+agent = CodeAgent(tools=[image_tool], model=model)
+
+# Pass additional parameters
+result = agent.run(
+    "Analyze this image and describe the main content",
+    additional_args={
+        "image_url": "https://example.com/image.jpg",
+        "analysis_detail": "high",
+        "user_preferences": {"language": "en", "focus": "objects"}
+    }
+)
+```
+
+## 4. Debug Your Agent System
+
+### 4.1 Use a Stronger LLM
+
+In agent workflows, some errors are LLM reasoning problems. Using a more powerful model often solves these issues.
+
+```python
+# Use a stronger model
+strong_model = InferenceClientModel(model_id="Qwen/Qwen2.5-72B-Instruct")  # Instead of a smaller model
+agent = CodeAgent(tools=[...], model=strong_model)
+```
+
+### 4.2 Modify System Prompts
+
+```python
+# Adjust system prompt (use with caution)
+agent.prompt_templates["system_prompt"] = agent.prompt_templates["system_prompt"] + """
+Additional guidance:
+1. Always try to understand the true intent of user queries first
+2. Make sure you have collected enough information before making any decisions
+3. Explain your reasoning process in as much detail as possible
+"""
+```
+
+### 4.3 Enable Additional Planning
+
+Enable planning steps to let the agent periodically reflect on its strategy:
+
+```python
+# Enable planning feature
+agent = CodeAgent(
+    tools=[...],
+    model=model,
+    planning_interval=3  # Plan every 3 steps
+)
+```
+
+## 5. Evaluation Criteria
+
+How do you know if your agent design is good? Ask yourself:
+
+> "If I were a novice using this tool for the first time, would programming and correcting errors be easy?"
+
+A good agent system should be:
+- Easy to understand and use
+- Provide clear error messages
+- Have predictable behavior
+- Effectively accomplish tasks
+
+By following these principles, you will be able to build more reliable and efficient agent systems.
