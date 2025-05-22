@@ -10,33 +10,34 @@
 
 *   **Manager Agent (主控 Agent)**:
     *   类型: `CodeAgent`
-    *   职责: 接收用户指令，协调子 Agent 工作，进行逻辑判断、信息综合和迭代控制，最终向用户返回结果。
+    *   职责: 接收用户指令，协调子 Agent 工作，进行逻辑判断、信息综合、执行总结和迭代控制，最终向用户返回结果。
 *   **Search Agent (通用搜索 Agent)**:
     *   类型: `ToolCallingAgent`
-    *   职责: 执行通用网页搜索，为 YouTube 搜索提供上下文或优化关键词。
+    *   职责: 执行通用网页搜索，为 YouTube 搜索提供上下文或优化关键词。(此 Agent 在当前 `youtube.py` 中独立运行，不直接被 ManagerAgent 管理，但其功能概念可被 YouTube Agent 内部工具替代或由 ManagerAgent 指挥 YouTube Agent 使用其搜索工具)。
     *   工具: `WebSearchTool`, `VisitWebpageTool` (复用现有工具)。
 *   **YouTube Agent (YouTube 视频处理 Agent)**:
     *   类型: `ToolCallingAgent`
-    *   职责: 负责 YouTube 视频的搜索和内容转录。
+    *   职责: 负责 YouTube 视频的搜索、内容转录，并可辅助进行通用网页搜索以优化 YouTube 搜索策略或获取上下文。
     *   工具:
-        *   `YouTubeVideoSearchTool` (新创建): 根据关键词搜索 YouTube 视频。
-        *   `YouTubeVideoTranscriptTool` (新创建): 获取指定 YouTube 视频的文本转录。
+        *   `YouTubeVideoSearchTool` (新创建)
+        *   `YouTubeVideoTranscriptTool` (新创建)
+        *   `WebSearchTool` (复用现有工具)
+        *   `VisitWebpageTool` (复用现有工具)
 *   **Summarization Agent (总结 Agent)**:
-    *   类型: `CodeAgent` (或 `ToolCallingAgent` 配备总结工具)
-    *   职责: 对 YouTube 视频的转录文本进行内容总结。
+    *   **此 Agent 已被移除。总结功能将由 Manager Agent 直接处理，或通过其内部逻辑实现，不再设立独立的 Summarization Agent。**
 
 ## 3. 工作流程
 
 1.  **用户输入**: 用户提出查询需求，例如"总结 XX 产品的用例"或"XX 发布会的新产品功能"。
 2.  **[可选] 上下文获取**:
     *   Manager Agent 判断是否需要通过通用搜索获取更多背景信息，以辅助生成更精准的 YouTube 搜索词。
-    *   若需要，指示 Search Agent 执行搜索。
-3.  **YouTube 搜索词制定**: Manager Agent 结合用户原始输入及 Search Agent 的结果（如果有），生成 YouTube 搜索关键词。
+    *   若需要，指示 `YouTube Agent` 使用其配备的 `WebSearchTool` 执行搜索**，或 Manager Agent 自行规划调用独立的 `Search Agent`（如果流程设计如此）。
+3.  **YouTube 搜索词制定**: Manager Agent 结合用户原始输入及搜索结果（如果有），生成 YouTube 搜索关键词。
 4.  **视频搜索**: Manager Agent 指示 YouTube Agent 使用 `YouTubeVideoSearchTool`，输入关键词，获取相关视频列表（包含标题、链接等）。
 5.  **视频选择与转录**:
     *   Manager Agent 根据预设策略（如相关性、观看量、发布时间）或允许用户选择，从列表中选取一个或多个视频。
     *   指示 YouTube Agent 使用 `YouTubeVideoTranscriptTool` 获取选定视频的文本转录。
-6.  **内容总结**: Manager Agent 将转录文本传递给 Summarization Agent 进行总结。
+6.  **内容总结**: Manager Agent **直接对转录文本进行总结**。
 7.  **结果评估与迭代**:
     *   Manager Agent 评估总结内容是否满足用户需求。
     *   **若不满足**:
@@ -53,35 +54,37 @@
 *   **功能**: 根据文本关键词在 YouTube 上搜索视频。
 *   **输入**:
     *   `query` (str): 搜索关键词。
-    *   `max_results` (int, optional): 最大返回结果数量，默认为 5。
-*   **输出**: `List[Dict[str, str]]`: 视频信息列表，每个字典包含：
+    *   **`max_results` 参数已移除**: 最大返回结果数量在工具内部固定为 5。
+*   **输出**: `str`: **包含视频信息列表的 JSON 字符串**。每个字典包含：
     *   `title` (str): 视频标题。
     *   `url` (str): 视频链接。
     *   `snippet` (str, optional): 视频简介或部分描述。
     *   `channel_title` (str, optional): 频道名称。
     *   `publish_time` (str, optional): 发布时间。
-*   **实现要点**: 调用 YouTube Data API v3 的 `search.list` 端点，或使用如 `youtube-search-python` 等第三方库。
+    *   `view_count` (str, optional): 观看次数文本。
+    *   `lengthText` (str, optional): 视频时长文本。
+    *   `thumbnail_url` (str, optional): 缩略图 URL。
+    *   如果发生错误，返回包含错误信息的 JSON 字符串。
+*   **实现要点**: 调用 **RapidAPI 的 `youtube-media-downloader` 服务** (具体端点为 `/v2/search/videos`)。
 
 ### 4.2. `YouTubeVideoTranscriptTool`
 
-*   **功能**: 获取指定 YouTube 视频的文本转录。
+*   **功能**: 获取指定 YouTube **视频 ID** 的文本转录。
 *   **输入**:
-    *   `video_url` (str): YouTube 视频的完整 URL。
-    *   `language_preference` (List[str], optional): 优先获取的字幕语言代码列表，例如 `['en', 'zh-CN']`。默认为尝试自动检测或英文。
-*   **输出**: `str`: 视频的文本转录。如果无法获取，返回空字符串或错误信息。
-*   **实现要点**: 使用 `youtube-transcript-api` 库或 `yt-dlp` 工具下载字幕文件并解析。需要处理无字幕、多种语言字幕选择等情况。
+    *   `video_id` (str): **YouTube 视频的唯一 ID (例如 'dQw4w9WgXcQ')**。
+    *   **`language_preference` 参数已移除**: 工具默认尝试获取英文 ('en') 字幕，如果不可用，则回退到第一个可用的字幕轨道。语言选择逻辑内置，不作为输入参数。
+*   **输出**: `str`: **包含转录片段列表的 JSON 字符串**。每个片段包含 `start_time_secs` (起始时间，秒) 和 `text` (文本内容)。如果无法获取，返回包含错误信息的 JSON 字符串。
+*   **实现要点**: 使用 **RapidAPI 的 `youtube-media-downloader` 服务** (具体端点为 `/v2/video/details` 获取字幕链接，然后下载并解析 **XML 格式的字幕文件**)。需要处理无字幕、获取字幕失败等情况。
 
 ## 5. Agent Prompting 关键点
 
 *   **Manager Agent**:
-    *   清晰定义其角色是协调者和决策者。
-    *   指导其如何根据用户问题判断是否需要通用搜索。
+    *   清晰定义其角色是协调者、决策者和总结者。
+    *   指导其如何根据用户问题判断是否需要 `YouTube Agent` 使用其 `WebSearchTool` 进行通用搜索。
     *   指导其如何从 `YouTubeVideoSearchTool` 的结果中选择合适的视频进行转录（例如，优先考虑标题相关性、新近度）。
-    *   指导其如何评估 Summarization Agent 的输出质量，以及在不满意时如何调整策略（换关键词、换视频）。
+    *   指导其如何评估自身总结的输出质量，以及在不满意时如何调整策略（换关键词、换视频、调整总结要求）。
     *   明确输出格式（总结文本 + 视频链接）。
-*   **Summarization Agent**:
-    *   根据用户需求（用例总结、功能介绍等）调整总结的侧重点和风格。
-    *   Prompt 应包含对总结长度、关键信息提取等方面的要求。
+*   **Summarization Agent**: **此 Agent 已移除，相关 Prompting 指导不再需要。**
 
 ## 6. 迭代与优化
 

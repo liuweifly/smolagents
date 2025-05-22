@@ -160,3 +160,4 @@ examples/chroma_db_bazi
 # Environment variables
 examples/.env
 examples/open_deep_research/.env
+*.json
